@@ -10,7 +10,6 @@ if(isset($_GET['setup'])) {
 }
 */
 // Solo procesar comandos si es una solicitud POST
-if($_SERVER['REQUEST_METHOD'] === 'POST') {
     $update = json_decode(file_get_contents('php://input'), true);
     $message = $update['message'];
     $text = $message['text'];
@@ -27,4 +26,3 @@ if($_SERVER['REQUEST_METHOD'] === 'POST') {
             'text' => $respuesta
         ]));
     }
-}
