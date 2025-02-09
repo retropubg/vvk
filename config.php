@@ -15,5 +15,5 @@ $owner_user = 'Rigo Jimenez';
 $bot = 'Alya San';
 $bot_user = 'Alya_Chk_BOT';
 $channel = 'https://t.me/@Bins_checker';
-$channel_name = 'ᴮɪɴs + ᴄᴜᴇɴᴛᴀs;
+$channel_name = 'ᴮɪɴs + ᴄᴜᴇɴᴛᴀs';
 ?>
