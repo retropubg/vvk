@@ -35,6 +35,61 @@ if (isset($json["message"])) {
             . "Mi único propósito es saludarte cuando escribes /start 😊";
         sendMessage($chat_id, $respuesta, $message_id);
     }
+
+
+
+
+  // Comando para generar una clave con fecha de expiración
+    if (strpos($message, "/generate") === 0) {
+        // Extraer la fecha de expiración del mensaje (formato: /generate YYYY-MM-DD)
+        $parts = explode(" ", $message);
+        if (count($parts) == 2 && preg_match("/^\d{4}-\d{2}-\d{2}$/", $parts[1])) {
+            $expiration_date = $parts[1];
+            $key = generateKey($expiration_date); // Generar la clave
+            sendMessage($chat_id, "🔑 Clave generada: $key\n📅 Fecha de expiración: $expiration_date");
+        } else {
+            sendMessage($chat_id, "❌ Formato incorrecto. Usa: /generate YYYY-MM-DD");
+        }
+    }
+
+    // Comando para reclamar una clave
+    if ($message === "/claim") {
+        $key = isset($_GET['key']) ? $_GET['key'] : null;
+        if ($key && claimKey($key)) {
+            sendMessage($chat_id, "🎉 ¡Clave reclamada con éxito!");
+        } else {
+            sendMessage($chat_id, "❌ Clave inválida o expirada.");
+        }
+    }
+
+
+// Función para generar una clave con fecha de expiración
+function generateKey($expiration_date) {
+    $key = bin2hex(random_bytes(8)); // Generar una clave aleatoria
+    $data = [
+        'key' => $key,
+        'expiration_date' => $expiration_date,
+        'claimed' => false
+    ];
+    file_put_contents("keys/$key.json", json_encode($data)); // Guardar la clave en un archivo
+    return $key;
+
+}    
+// Función para reclamar una clave
+function claimKey($key) {
+    $file = "keys/$key.json";
+    if (file_exists($file)) {
+        $data = json_decode(file_get_contents($file), true);
+        if (!$data['claimed'] && strtotime($data['expiration_date']) >= time()) {
+            $data['claimed'] = true;
+            file_put_contents($file, json_encode($data)); // Marcar la clave como reclamada
+            return true;
+        }
+    }
+    return false;
+}
+
+    
 }
 
 //-------FUNCIÓN PARA ENVIAR MENSAJES---------//
