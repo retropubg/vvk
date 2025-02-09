@@ -31,7 +31,7 @@ if (isset($json["message"])) {
 
     // Único comando: /start
     if ($message === "/start") {
-        $respuesta = "👋 ¡Hola! Soy un bot simple.\n\n"
+        $respuesta = "👋 ¡Hola! Soy un bot simple rj.\n\n"
             . "Mi único propósito es saludarte cuando escribes /start 😊";
         sendMessage($chat_id, $respuesta, $message_id);
     }
