@@ -102,28 +102,32 @@ if (isset($json["message"])) {
     }
 
     // Comando /genkey (solo para el usuario 1292171163)
-    if (strpos($message, "/genkey") === 0 && $id == 1292171163) {
-        $parts = explode(" ", $message);
-        if (count($parts) === 2 && preg_match("/^[dhm]\d+$/", $parts[1])) {
-            $duration_type = substr($parts[1], 0, 1); // d, h, o m
-            $duration = intval(substr($parts[1], 1)); // Número de días, horas o minutos
-            $key_value = generateKey(); // Generar una key única
+    if (strpos($message, "/genkey") === 0) {
+        if ($id == 1292171163) {
+            $parts = explode(" ", $message);
+            if (count($parts) === 2 && preg_match("/^[dhm]\d+$/", $parts[1])) {
+                $duration_type = substr($parts[1], 0, 1); // d, h, o m
+                $duration = intval(substr($parts[1], 1)); // Número de días, horas o minutos
+                $key_value = generateKey(); // Generar una key única
 
-            // Insertar la key en la base de datos
-            $sql = "INSERT INTO keys_table (key_value, duration, duration_type) VALUES (?, ?, ?)";
-            $stmt = $conn->prepare($sql);
-            $stmt->bind_param("sis", $key_value, $duration, $duration_type);
-            $stmt->execute();
-            $stmt->close();
+                // Insertar la key en la base de datos
+                $sql = "INSERT INTO keys_table (key_value, duration, duration_type) VALUES (?, ?, ?)";
+                $stmt = $conn->prepare($sql);
+                $stmt->bind_param("sis", $key_value, $duration, $duration_type);
+                $stmt->execute();
+                $stmt->close();
 
-            // Respuesta al usuario
-            $respuesta = "🔑 Key generada:\n\n"
-                . "Key: <code>$key_value</code>\n"
-                . "Duración: $duration $duration_type\n\n"
-                . "⚠️ Esta key solo puede ser usada una vez.";
-            sendMessage($chat_id, $respuesta, $message_id);
+                // Respuesta al usuario
+                $respuesta = "🔑 Key generada:\n\n"
+                    . "Key: <code>$key_value</code>\n"
+                    . "Duración: $duration $duration_type\n\n"
+                    . "⚠️ Esta key solo puede ser usada una vez.";
+                sendMessage($chat_id, $respuesta, $message_id);
+            } else {
+                sendMessage($chat_id, "❌ Formato incorrecto. Usa /genkey [d|h|m][número].", $message_id);
+            }
         } else {
-            sendMessage($chat_id, "❌ Formato incorrecto. Usa /genkey [d|h|m][número].", $message_id);
+            sendMessage($chat_id, "❌ Este comando es solo para administradores.", $message_id);
         }
     }
 
@@ -203,22 +207,71 @@ if (isset($json["message"])) {
     }
 
     // Comando /vipremove (solo para el usuario 1292171163)
-    if (strpos($message, "/vipremove") === 0 && $id == 1292171163) {
-        $parts = explode(" ", $message);
-        if (count($parts) === 2) {
-            $user_id_to_remove = $parts[1]; // ID del usuario a eliminar
+    if (strpos($message, "/vipremove") === 0) {
+        if ($id == 1292171163) {
+            $parts = explode(" ", $message);
+            if (count($parts) === 2) {
+                $user_id_to_remove = $parts[1]; // ID del usuario a eliminar
+
+                // Eliminar al usuario premium
+                $sql = "DELETE FROM premiums WHERE user_id = ?";
+                $stmt = $conn->prepare($sql);
+                $stmt->bind_param("i", $user_id_to_remove);
+                $stmt->execute();
+
+                // Respuesta al usuario
+                $respuesta = "✅ Usuario premium con ID $user_id_to_remove eliminado correctamente.";
+                sendMessage($chat_id, $respuesta, $message_id);
+            } else {
+                sendMessage($chat_id, "❌ Formato incorrecto. Usa /vipremove [id].", $message_id);
+            }
+        } else {
+            sendMessage($chat_id, "❌ Este comando es solo para administradores.", $message_id);
+        }
+    }
+
+    // Comandos premium (solo para usuarios premium)
+    if (isPremiumUser($id, $conn)) {
+        // Aquí puedes agregar comandos exclusivos para usuarios premium
+        if ($message === "/premiumcommand") {
+            $respuesta = "🎖️ Este es un comando exclusivo para usuarios premium.";
+            sendMessage($chat_id, $respuesta, $message_id);
+        }
+    }
+
+    // Verificar si algún usuario premium ha expirado
+    checkExpiredPremiums($conn);
+}
+
+// Función para verificar si un usuario es premium
+function isPremiumUser($user_id, $conn) {
+    $sql = "SELECT * FROM premiums WHERE user_id = ? AND expires_at > NOW()";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    return $result->num_rows > 0;
+}
+
+// Función para verificar y eliminar usuarios premium expirados
+function checkExpiredPremiums($conn) {
+    $sql = "SELECT * FROM premiums WHERE expires_at <= NOW()";
+    $result = $conn->query($sql);
+
+    if ($result->num_rows > 0) {
+        while ($row = $result->fetch_assoc()) {
+            $user_id = $row["user_id"];
+            $first_name = $row["first_name"];
 
             // Eliminar al usuario premium
             $sql = "DELETE FROM premiums WHERE user_id = ?";
             $stmt = $conn->prepare($sql);
-            $stmt->bind_param("i", $user_id_to_remove);
+            $stmt->bind_param("i", $user_id);
             $stmt->execute();
 
-            // Respuesta al usuario
-            $respuesta = "✅ Usuario premium con ID $user_id_to_remove eliminado correctamente.";
-            sendMessage($chat_id, $respuesta, $message_id);
-        } else {
-            sendMessage($chat_id, "❌ Formato incorrecto. Usa /vipremove [id].", $message_id);
+            // Enviar mensaje al usuario
+            $respuesta = "ℹ️ Hola, $first_name. Tu suscripción premium ha expirado. ¡Esperamos verte de nuevo pronto!";
+            sendMessage($user_id, $respuesta, null);
         }
     }
 }
