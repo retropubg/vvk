@@ -16,7 +16,7 @@ $message = $update["text"];
 $chat_id = $update["chat"]["id"];
 $id_new = $update["new_chat_member"]["id"];
 $grupo = $update["chat"]["title"];
-$nuevo = $update["new_chat_member"]["first_name"]. ' '.$update["new_chat_member"]["last>
+//$nuevo = $update["new_chat_member"]["first_name"]. ' '.$update["new_chat_member"]["last>
 //----------------------END VARIABLES----------------------//
 
 //$user = $update["from"]["username"];
