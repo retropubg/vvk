@@ -19,7 +19,7 @@ $grupo = $update["chat"]["title"];
 $nuevo = $update["new_chat_member"]["first_name"]. ' '.$update["new_chat_member"]["last>
 //----------------------END VARIABLES----------------------//
 
-$user = $update["from"]["username"];
+//$user = $update["from"]["username"];
 //------------seguridad-------------//
 // ID de tu usuario (para permitir mensajes personales solo para ti)
 $myid = "1292171163"; // Reemplaza con tu ID de usuario
