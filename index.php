@@ -1,11 +1,19 @@
 <?php
-// Configurar la zona horaria a México City
+// Habilitar errores
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
+// Configurar la zona horaria
 date_default_timezone_set('America/Mexico_City');
 
-// Obtener el token del bot de Telegram desde las variables de entorno
+// Obtener el token del bot de Telegram
 $token = getenv('TELEGRAM_BOT_TOKEN');
+if (empty($token)) {
+    die("❌ Error: No se encontró el token del bot.");
+}
 
-// Obtener las credenciales de la base de datos desde las variables de entorno
+// Obtener las credenciales de la base de datos
 $host = getenv('MYSQLHOST');
 $user = getenv('MYSQLUSER');
 $password = getenv('MYSQLPASSWORD');
@@ -14,12 +22,9 @@ $port = getenv('MYSQLPORT');
 
 // Crear la conexión a la base de datos
 $conn = new mysqli($host, $user, $password, $database, $port);
-
-// Verificar la conexión
 if ($conn->connect_error) {
-    die("Error al conectar a la base de datos: " . $conn->connect_error);
+    die("❌ Error al conectar a la base de datos: " . $conn->connect_error);
 }
-echo "Conectado a la base de datos MySQL correctamente.";
 
 // Crear tablas si no existen
 $sql = "CREATE TABLE IF NOT EXISTS users (
@@ -30,7 +35,7 @@ $sql = "CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )";
 if ($conn->query($sql) === FALSE) {
-    die("Error al crear la tabla users: " . $conn->error);
+    die("❌ Error al crear la tabla users: " . $conn->error);
 }
 
 $sql = "CREATE TABLE IF NOT EXISTS keys_table (
@@ -43,7 +48,7 @@ $sql = "CREATE TABLE IF NOT EXISTS keys_table (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )";
 if ($conn->query($sql) === FALSE) {
-    die("Error al crear la tabla keys_table: " . $conn->error);
+    die("❌ Error al crear la tabla keys_table: " . $conn->error);
 }
 
 $sql = "CREATE TABLE IF NOT EXISTS premiums (
@@ -55,7 +60,7 @@ $sql = "CREATE TABLE IF NOT EXISTS premiums (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )";
 if ($conn->query($sql) === FALSE) {
-    die("Error al crear la tabla premiums: " . $conn->error);
+    die("❌ Error al crear la tabla premiums: " . $conn->error);
 }
 
 $sql = "CREATE TABLE IF NOT EXISTS message_logs (
@@ -65,49 +70,41 @@ $sql = "CREATE TABLE IF NOT EXISTS message_logs (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )";
 if ($conn->query($sql) === FALSE) {
-    die("Error al crear la tabla message_logs: " . $conn->error);
+    die("❌ Error al crear la tabla message_logs: " . $conn->error);
 }
 
 // URL base de la API de Telegram
 $website = "https://api.telegram.org/bot".$token;
 
-// Obtener los datos enviados por Telegram en formato JSON
+// Obtener los datos enviados por Telegram
 $data = file_get_contents("php://input");
+if (empty($data)) {
+    die("❌ Error: No se recibieron datos de Telegram.");
+}
+
 $json = json_decode($data, true);
+if (json_last_error() !== JSON_ERROR_NONE) {
+    die("❌ Error: Los datos recibidos no son un JSON válido.");
+}
 
 // Verificar si el JSON contiene un mensaje
 if (isset($json["message"])) {
     $update = $json["message"];
-
-    //---------DATOS PERSONALES---------//
-    $id = $update["from"]["id"]; // ID del usuario que envió el mensaje
-    $Name = $update["from"]["first_name"]; // Nombre del usuario
-    $last = $update["from"]["last_name"]; // Apellido del usuario
-    $username = $update["from"]["username"] ?? null; // Username del usuario
-    $message_id = $update["message_id"]; // ID del mensaje
-    $message = $update["text"]; // Texto del mensaje
-
-    //----------DATOS DE GRUPOS----------//
-    $chat_id = $update["chat"]["id"]; // ID del chat (puede ser un grupo o un chat privado)
+    $chat_id = $update["chat"]["id"];
+    $message = $update["text"];
+    $message_id = $update["message_id"];
+    $id = $update["from"]["id"];
+    $Name = $update["from"]["first_name"];
 
     // Verificar límite de mensajes
-    if (!checkMessageLimit($id, $conn)) {
+    if (!checkMessageLimit($id, $conn, $message_id)) {
         sendMessage($chat_id, "⏳ Por favor, espera 60 segundos antes de enviar otro mensaje.", $message_id);
         exit;
     }
 
-    // Comando /start (disponible para todos)
+    // Comando /start
     if ($message === "/start") {
-        // Guardar al usuario en la base de datos
-        $sql = "INSERT INTO users (user_id, first_name, last_name) VALUES (?, ?, ?)
-                ON DUPLICATE KEY UPDATE first_name = VALUES(first_name), last_name = VALUES(last_name)";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("iss", $id, $Name, $last);
-        $stmt->execute();
-        $stmt->close();
-
-        // Respuesta al usuario
-        $respuesta = "👋 ¡Hola, $Name! Soy un bot simple rj.\n\n"
+        $respuesta = "👋 ¡Hola, $Name! Soy un bot simple.\n\n"
             . "Mis comandos disponibles son:\n"
             . "/start - Ver este mensaje.\n"
             . "/claim [key] - Canjear una key de premium.\n"
@@ -116,36 +113,32 @@ if (isset($json["message"])) {
     }
 
     // Comando /genkey (solo para el usuario 1292171163)
-    if (strpos($message, "/genkey") === 0) {
-        if ($id == 1292171163) {
-            $parts = explode(" ", $message);
-            if (count($parts) === 2 && preg_match("/^\d+[dhm]$/", $parts[1])) {
-                $duration_type = substr($parts[1], -1); // d, h, o m
-                $duration = intval(substr($parts[1], 0, -1)); // Número de días, horas o minutos
-                $key_value = generateKey(); // Generar una key única
+    if (strpos($message, "/genkey") === 0 && $id == 1292171163) {
+        $parts = explode(" ", $message);
+        if (count($parts) === 2 && preg_match("/^\d+[dhm]$/", $parts[1])) {
+            $duration_type = substr($parts[1], -1); // d, h, o m
+            $duration = intval(substr($parts[1], 0, -1)); // Número de días, horas o minutos
+            $key_value = generateKey(); // Generar una key única
 
-                // Insertar la key en la base de datos
-                $sql = "INSERT INTO keys_table (key_value, duration, duration_type) VALUES (?, ?, ?)";
-                $stmt = $conn->prepare($sql);
-                $stmt->bind_param("sis", $key_value, $duration, $duration_type);
-                $stmt->execute();
-                $stmt->close();
+            // Insertar la key en la base de datos
+            $sql = "INSERT INTO keys_table (key_value, duration, duration_type) VALUES (?, ?, ?)";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("sis", $key_value, $duration, $duration_type);
+            $stmt->execute();
+            $stmt->close();
 
-                // Respuesta al usuario
-                $respuesta = "🔑 Key generada:\n\n"
-                    . "Key: <code>$key_value</code>\n"
-                    . "Duración: $duration $duration_type\n\n"
-                    . "⚠️ Esta key solo puede ser usada una vez.";
-                sendMessage($chat_id, $respuesta, $message_id);
-            } else {
-                sendMessage($chat_id, "❌ Formato incorrecto. Usa /genkey [número][d|h|m].", $message_id);
-            }
+            // Respuesta al usuario
+            $respuesta = "🔑 Key generada:\n\n"
+                . "Key: <code>$key_value</code>\n"
+                . "Duración: $duration $duration_type\n\n"
+                . "⚠️ Esta key solo puede ser usada una vez.";
+            sendMessage($chat_id, $respuesta, $message_id);
         } else {
-            sendMessage($chat_id, "❌ Este comando es solo para administradores.", $message_id);
+            sendMessage($chat_id, "❌ Formato incorrecto. Usa /genkey [número][d|h|m].", $message_id);
         }
     }
 
-    // Comando /claim (disponible para todos)
+    // Comando /claim
     if (strpos($message, "/claim") === 0) {
         $parts = explode(" ", $message);
         if (count($parts) === 2) {
@@ -202,52 +195,48 @@ if (isset($json["message"])) {
     }
 
     // Comando /vip (solo para el usuario 1292171163)
-    if (strpos($message, "/vip") === 0) {
-        if ($id == 1292171163) {
-            $parts = explode(" ", $message);
-            if (count($parts) === 2) {
-                $user_id_to_add = $parts[1]; // ID del usuario a agregar como premium
+    if (strpos($message, "/vip") === 0 && $id == 1292171163) {
+        $parts = explode(" ", $message);
+        if (count($parts) === 2) {
+            $user_id_to_add = $parts[1]; // ID del usuario a agregar como premium
 
-                // Verificar si el usuario ya es premium
-                $sql = "SELECT * FROM premiums WHERE user_id = ?";
+            // Verificar si el usuario ya es premium
+            $sql = "SELECT * FROM premiums WHERE user_id = ?";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("i", $user_id_to_add);
+            $stmt->execute();
+            $result = $stmt->get_result();
+
+            if ($result->num_rows > 0) {
+                sendMessage($chat_id, "❌ Este usuario ya es premium.", $message_id);
+            } else {
+                // Obtener los datos del usuario
+                $sql = "SELECT first_name, username FROM users WHERE user_id = ?";
                 $stmt = $conn->prepare($sql);
                 $stmt->bind_param("i", $user_id_to_add);
                 $stmt->execute();
                 $result = $stmt->get_result();
 
                 if ($result->num_rows > 0) {
-                    sendMessage($chat_id, "❌ Este usuario ya es premium.", $message_id);
-                } else {
-                    // Obtener los datos del usuario
-                    $sql = "SELECT first_name, username FROM users WHERE user_id = ?";
+                    $user_data = $result->fetch_assoc();
+                    $first_name = $user_data["first_name"];
+                    $username = $user_data["username"];
+
+                    // Agregar al usuario como premium (sin fecha de expiración)
+                    $sql = "INSERT INTO premiums (user_id, first_name, username) VALUES (?, ?, ?)";
                     $stmt = $conn->prepare($sql);
-                    $stmt->bind_param("i", $user_id_to_add);
+                    $stmt->bind_param("iss", $user_id_to_add, $first_name, $username);
                     $stmt->execute();
-                    $result = $stmt->get_result();
 
-                    if ($result->num_rows > 0) {
-                        $user_data = $result->fetch_assoc();
-                        $first_name = $user_data["first_name"];
-                        $username = $user_data["username"];
-
-                        // Agregar al usuario como premium (sin fecha de expiración)
-                        $sql = "INSERT INTO premiums (user_id, first_name, username) VALUES (?, ?, ?)";
-                        $stmt = $conn->prepare($sql);
-                        $stmt->bind_param("iss", $user_id_to_add, $first_name, $username);
-                        $stmt->execute();
-
-                        // Respuesta al administrador
-                        $respuesta = "✅ Usuario con ID $user_id_to_add agregado como premium.";
-                        sendMessage($chat_id, $respuesta, $message_id);
-                    } else {
-                        sendMessage($chat_id, "❌ No se encontró al usuario en la base de datos.", $message_id);
-                    }
+                    // Respuesta al administrador
+                    $respuesta = "✅ Usuario con ID $user_id_to_add agregado como premium.";
+                    sendMessage($chat_id, $respuesta, $message_id);
+                } else {
+                    sendMessage($chat_id, "❌ No se encontró al usuario en la base de datos.", $message_id);
                 }
-            } else {
-                sendMessage($chat_id, "❌ Formato incorrecto. Usa /vip [id].", $message_id);
             }
         } else {
-            sendMessage($chat_id, "❌ Este comando es solo para administradores.", $message_id);
+            sendMessage($chat_id, "❌ Formato incorrecto. Usa /vip [id].", $message_id);
         }
     }
 
@@ -256,7 +245,7 @@ if (isset($json["message"])) {
 }
 
 // Función para verificar el límite de mensajes
-function checkMessageLimit($user_id, $conn) {
+function checkMessageLimit($user_id, $conn, $message_id) {
     $sql = "SELECT COUNT(*) as count FROM message_logs WHERE user_id = ? AND created_at >= NOW() - INTERVAL 30 SECOND";
     $stmt = $conn->prepare($sql);
     $stmt->bind_param("i", $user_id);
@@ -310,13 +299,16 @@ function checkExpiredPremiums($conn) {
     }
 }
 
-//-------FUNCIÓN PARA ENVIAR MENSAJES---------//
-function sendMessage($chatID, $respuesta, $message_id) {
-    // Construir la URL para enviar el mensaje
-    $url = $GLOBALS["website"]."/sendMessage?disable_web_page_preview=true&chat_id=".$chatID."&reply_to_message_id=".$message_id."&parse_mode=HTML&text=".urlencode($respuesta);
-    
-    // Enviar el mensaje y capturar la respuesta
-    file_get_contents($url);
+// Función para enviar mensajes
+function sendMessage($chatID, $respuesta, $message_id = null) {
+    $url = $GLOBALS["website"]."/sendMessage?disable_web_page_preview=true&chat_id=".$chatID."&parse_mode=HTML&text=".urlencode($respuesta);
+    if ($message_id) {
+        $url .= "&reply_to_message_id=".$message_id;
+    }
+    $response = file_get_contents($url);
+    if ($response === FALSE) {
+        error_log("Error al enviar mensaje a Telegram: " . print_r(error_get_last(), true));
+    }
 }
 
 // Función para generar una key única
