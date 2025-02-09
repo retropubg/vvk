@@ -58,6 +58,16 @@ if ($conn->query($sql) === FALSE) {
     die("Error al crear la tabla premiums: " . $conn->error);
 }
 
+$sql = "CREATE TABLE IF NOT EXISTS message_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    message_id BIGINT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)";
+if ($conn->query($sql) === FALSE) {
+    die("Error al crear la tabla message_logs: " . $conn->error);
+}
+
 // URL base de la API de Telegram
 $website = "https://api.telegram.org/bot".$token;
 
@@ -80,6 +90,12 @@ if (isset($json["message"])) {
     //----------DATOS DE GRUPOS----------//
     $chat_id = $update["chat"]["id"]; // ID del chat (puede ser un grupo o un chat privado)
 
+    // Verificar límite de mensajes
+    if (!checkMessageLimit($id, $conn)) {
+        sendMessage($chat_id, "⏳ Por favor, espera 60 segundos antes de enviar otro mensaje.", $message_id);
+        exit;
+    }
+
     // Comando /start (disponible para todos)
     if ($message === "/start") {
         // Guardar al usuario en la base de datos
@@ -94,7 +110,8 @@ if (isset($json["message"])) {
         $respuesta = "👋 ¡Hola, $Name! Soy un bot simple rj.\n\n"
             . "Mis comandos disponibles son:\n"
             . "/start - Ver este mensaje.\n"
-            . "/claim [key] - Canjear una key de premium.";
+            . "/claim [key] - Canjear una key de premium.\n"
+            . "/vip [id] - Agregar usuario premium (solo para admins).";
         sendMessage($chat_id, $respuesta, $message_id);
     }
 
@@ -102,9 +119,9 @@ if (isset($json["message"])) {
     if (strpos($message, "/genkey") === 0) {
         if ($id == 1292171163) {
             $parts = explode(" ", $message);
-            if (count($parts) === 2 && preg_match("/^[dhm]\d+$/", $parts[1])) {
-                $duration_type = substr($parts[1], 0, 1); // d, h, o m
-                $duration = intval(substr($parts[1], 1)); // Número de días, horas o minutos
+            if (count($parts) === 2 && preg_match("/^\d+[dhm]$/", $parts[1])) {
+                $duration_type = substr($parts[1], -1); // d, h, o m
+                $duration = intval(substr($parts[1], 0, -1)); // Número de días, horas o minutos
                 $key_value = generateKey(); // Generar una key única
 
                 // Insertar la key en la base de datos
@@ -121,7 +138,7 @@ if (isset($json["message"])) {
                     . "⚠️ Esta key solo puede ser usada una vez.";
                 sendMessage($chat_id, $respuesta, $message_id);
             } else {
-                sendMessage($chat_id, "❌ Formato incorrecto. Usa /genkey [d|h|m][número].", $message_id);
+                sendMessage($chat_id, "❌ Formato incorrecto. Usa /genkey [número][d|h|m].", $message_id);
             }
         } else {
             sendMessage($chat_id, "❌ Este comando es solo para administradores.", $message_id);
@@ -184,47 +201,50 @@ if (isset($json["message"])) {
         }
     }
 
-    // Comando /listpremiums (solo para el usuario 1292171163)
-    if ($message === "/listpremiums") {
-        if ($id == 1292171163) {
-            // Obtener la lista de usuarios premium
-            $sql = "SELECT * FROM premiums";
-            $result = $conn->query($sql);
-
-            if ($result->num_rows > 0) {
-                $respuesta = "👑 Lista de usuarios premium:\n\n";
-                while ($row = $result->fetch_assoc()) {
-                    $respuesta .= "👤 Nombre: " . $row["first_name"] . "\n"
-                        . "🆔 ID: " . $row["user_id"] . "\n"
-                        . "📅 Expira: " . $row["expires_at"] . "\n\n";
-                }
-            } else {
-                $respuesta = "ℹ️ No hay usuarios premium en este momento.";
-            }
-            sendMessage($chat_id, $respuesta, $message_id);
-        } else {
-            sendMessage($chat_id, "❌ Este comando es solo para administradores.", $message_id);
-        }
-    }
-
-    // Comando /vipremove (solo para el usuario 1292171163)
-    if (strpos($message, "/vipremove") === 0) {
+    // Comando /vip (solo para el usuario 1292171163)
+    if (strpos($message, "/vip") === 0) {
         if ($id == 1292171163) {
             $parts = explode(" ", $message);
             if (count($parts) === 2) {
-                $user_id_to_remove = $parts[1]; // ID del usuario a eliminar
+                $user_id_to_add = $parts[1]; // ID del usuario a agregar como premium
 
-                // Eliminar al usuario premium
-                $sql = "DELETE FROM premiums WHERE user_id = ?";
+                // Verificar si el usuario ya es premium
+                $sql = "SELECT * FROM premiums WHERE user_id = ?";
                 $stmt = $conn->prepare($sql);
-                $stmt->bind_param("i", $user_id_to_remove);
+                $stmt->bind_param("i", $user_id_to_add);
                 $stmt->execute();
+                $result = $stmt->get_result();
 
-                // Respuesta al usuario
-                $respuesta = "✅ Usuario premium con ID $user_id_to_remove eliminado correctamente.";
-                sendMessage($chat_id, $respuesta, $message_id);
+                if ($result->num_rows > 0) {
+                    sendMessage($chat_id, "❌ Este usuario ya es premium.", $message_id);
+                } else {
+                    // Obtener los datos del usuario
+                    $sql = "SELECT first_name, username FROM users WHERE user_id = ?";
+                    $stmt = $conn->prepare($sql);
+                    $stmt->bind_param("i", $user_id_to_add);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+
+                    if ($result->num_rows > 0) {
+                        $user_data = $result->fetch_assoc();
+                        $first_name = $user_data["first_name"];
+                        $username = $user_data["username"];
+
+                        // Agregar al usuario como premium (sin fecha de expiración)
+                        $sql = "INSERT INTO premiums (user_id, first_name, username) VALUES (?, ?, ?)";
+                        $stmt = $conn->prepare($sql);
+                        $stmt->bind_param("iss", $user_id_to_add, $first_name, $username);
+                        $stmt->execute();
+
+                        // Respuesta al administrador
+                        $respuesta = "✅ Usuario con ID $user_id_to_add agregado como premium.";
+                        sendMessage($chat_id, $respuesta, $message_id);
+                    } else {
+                        sendMessage($chat_id, "❌ No se encontró al usuario en la base de datos.", $message_id);
+                    }
+                }
             } else {
-                sendMessage($chat_id, "❌ Formato incorrecto. Usa /vipremove [id].", $message_id);
+                sendMessage($chat_id, "❌ Formato incorrecto. Usa /vip [id].", $message_id);
             }
         } else {
             sendMessage($chat_id, "❌ Este comando es solo para administradores.", $message_id);
@@ -235,9 +255,31 @@ if (isset($json["message"])) {
     checkExpiredPremiums($conn);
 }
 
+// Función para verificar el límite de mensajes
+function checkMessageLimit($user_id, $conn) {
+    $sql = "SELECT COUNT(*) as count FROM message_logs WHERE user_id = ? AND created_at >= NOW() - INTERVAL 30 SECOND";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $row = $result->fetch_assoc();
+
+    if ($row["count"] >= 3) {
+        return false; // Límite excedido
+    }
+
+    // Registrar el mensaje
+    $sql = "INSERT INTO message_logs (user_id, message_id) VALUES (?, ?)";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("ii", $user_id, $message_id);
+    $stmt->execute();
+
+    return true; // Límite no excedido
+}
+
 // Función para verificar si un usuario es premium
 function isPremiumUser($user_id, $conn) {
-    $sql = "SELECT * FROM premiums WHERE user_id = ? AND expires_at > NOW()";
+    $sql = "SELECT * FROM premiums WHERE user_id = ? AND (expires_at IS NULL OR expires_at > NOW())";
     $stmt = $conn->prepare($sql);
     $stmt->bind_param("i", $user_id);
     $stmt->execute();
@@ -247,7 +289,7 @@ function isPremiumUser($user_id, $conn) {
 
 // Función para verificar y eliminar usuarios premium expirados
 function checkExpiredPremiums($conn) {
-    $sql = "SELECT * FROM premiums WHERE expires_at <= NOW()";
+    $sql = "SELECT * FROM premiums WHERE expires_at IS NOT NULL AND expires_at <= NOW()";
     $result = $conn->query($sql);
 
     if ($result->num_rows > 0) {
