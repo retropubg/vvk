@@ -38,7 +38,7 @@ if(isset($_GET['setup'])) {
     if($text === "/start") {
         $respuesta = "👋 ¡Hola! Soy un bot simple.\n\n"
             . "Mi único propósito es saludarte cuando escribes /start 😊";
-        sendMessage($chat_id, $respuesta, $message_id)
+        sendMessage($chat_id, $respuesta, $message_id);
 
     }
 
