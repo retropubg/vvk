@@ -2,12 +2,13 @@
 $bot_token = getenv('TELEGRAM_BOT_TOKEN'); // Obtener token de variables de entorno
 
 // Configurar webhook automáticamente al visitar /?setup
+/*
 if(isset($_GET['setup'])) {
     $webhook_url = getenv('RAILWAY_STATIC_URL') . '/?port=' . getenv('PORT');
     file_get_contents("https://api.telegram.org/bot$bot_token/setWebhook?url=$webhook_url");
     die("✅ Webhook configurado!");
 }
-
+*/
 // Solo procesar comandos si es una solicitud POST
 if($_SERVER['REQUEST_METHOD'] === 'POST') {
     $update = json_decode(file_get_contents('php://input'), true);
