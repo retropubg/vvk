@@ -1,5 +1,5 @@
 <?php
-date_default_timezone_set('America/Buenos_Aires');
+date_default_timezone_set('America/Mexico_city');
 // Obtener el token del bot de Telegram desde las variables de entorno
 $token = getenv('TELEGRAM_BOT_TOKEN');
 
