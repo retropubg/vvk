@@ -2,6 +2,35 @@
 // Obtener el token del bot de Telegram desde las variables de entorno
 $token = getenv('TELEGRAM_BOT_TOKEN');
 
+// Obtener las credenciales de la base de datos desde las variables de entorno
+$host = getenv('MYSQLHOST');
+$user = getenv('MYSQLUSER');
+$password = getenv('MYSQLPASSWORD');
+$database = getenv('MYSQLDATABASE');
+$port = getenv('MYSQLPORT');
+
+// Crear la conexión a la base de datos
+$conn = new mysqli($host, $user, $password, $database, $port);
+
+// Verificar la conexión
+if ($conn->connect_error) {
+    die("Error al conectar a la base de datos: " . $conn->connect_error);
+}
+echo "Conectado a la base de datos MySQL correctamente.";
+
+// Crear una tabla de usuarios si no existe
+$sql = "CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL UNIQUE,
+    first_name VARCHAR(255) NOT NULL,
+    last_name VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)";
+
+if ($conn->query($sql) === FALSE) {
+    die("Error al crear la tabla: " . $conn->error);
+}
+
 // URL base de la API de Telegram
 $website = "https://api.telegram.org/bot".$token;
 
@@ -31,65 +60,19 @@ if (isset($json["message"])) {
 
     // Único comando: /start
     if ($message === "/start") {
-        $respuesta = "👋 ¡Hola! Soy un bot simple rj.\n\n"
+        // Guardar al usuario en la base de datos
+        $sql = "INSERT INTO users (user_id, first_name, last_name) VALUES (?, ?, ?)
+                ON DUPLICATE KEY UPDATE first_name = VALUES(first_name), last_name = VALUES(last_name)";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("iss", $id, $Name, $last);
+        $stmt->execute();
+        $stmt->close();
+
+        // Respuesta al usuario
+        $respuesta = "👋 ¡Hola, $Name! Soy un bot simple rj.\n\n"
             . "Mi único propósito es saludarte cuando escribes /start 😊";
         sendMessage($chat_id, $respuesta, $message_id);
     }
-
-
-
-
-  // Comando para generar una clave con fecha de expiración
-    if (strpos($message, "/generate") === 0) {
-        // Extraer la fecha de expiración del mensaje (formato: /generate YYYY-MM-DD)
-        $parts = explode(" ", $message);
-        if (count($parts) == 2 && preg_match("/^\d{4}-\d{2}-\d{2}$/", $parts[1])) {
-            $expiration_date = $parts[1];
-            $key = generateKey($expiration_date); // Generar la clave
-            sendMessage($chat_id, "🔑 Clave generada: $key\n📅 Fecha de expiración: $expiration_date");
-        } else {
-            sendMessage($chat_id, "❌ Formato incorrecto. Usa: /generate YYYY-MM-DD");
-        }
-    }
-
-    // Comando para reclamar una clave
-    if ($message === "/claim") {
-        $key = isset($_GET['key']) ? $_GET['key'] : null;
-        if ($key && claimKey($key)) {
-            sendMessage($chat_id, "🎉 ¡Clave reclamada con éxito!");
-        } else {
-            sendMessage($chat_id, "❌ Clave inválida o expirada.");
-        }
-    }
-
-
-// Función para generar una clave con fecha de expiración
-function generateKey($expiration_date) {
-    $key = bin2hex(random_bytes(8)); // Generar una clave aleatoria
-    $data = [
-        'key' => $key,
-        'expiration_date' => $expiration_date,
-        'claimed' => false
-    ];
-    file_put_contents("keys/$key.json", json_encode($data)); // Guardar la clave en un archivo
-    return $key;
-
-}    
-// Función para reclamar una clave
-function claimKey($key) {
-    $file = "keys/$key.json";
-    if (file_exists($file)) {
-        $data = json_decode(file_get_contents($file), true);
-        if (!$data['claimed'] && strtotime($data['expiration_date']) >= time()) {
-            $data['claimed'] = true;
-            file_put_contents($file, json_encode($data)); // Marcar la clave como reclamada
-            return true;
-        }
-    }
-    return false;
-}
-
-    
 }
 
 //-------FUNCIÓN PARA ENVIAR MENSAJES---------//
@@ -114,3 +97,7 @@ function capture($string, $start, $end) {
     $len = strpos($string, $end, $ini) - $ini;
     return substr($string, $ini, $len);
 }
+
+// Cerrar la conexión a la base de datos
+$conn->close();
+?>
