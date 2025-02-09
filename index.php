@@ -80,7 +80,7 @@ if (isset($json["message"])) {
     //----------DATOS DE GRUPOS----------//
     $chat_id = $update["chat"]["id"]; // ID del chat (puede ser un grupo o un chat privado)
 
-    // Comando /start
+    // Comando /start (disponible para todos)
     if ($message === "/start") {
         // Guardar al usuario en la base de datos
         $sql = "INSERT INTO users (user_id, first_name, last_name) VALUES (?, ?, ?)
@@ -94,10 +94,7 @@ if (isset($json["message"])) {
         $respuesta = "👋 ¡Hola, $Name! Soy un bot simple rj.\n\n"
             . "Mis comandos disponibles son:\n"
             . "/start - Ver este mensaje.\n"
-            . "/genkey [d|h|m][número] - Generar una key de premium (solo para admins).\n"
-            . "/claim [key] - Canjear una key de premium.\n"
-            . "/listpremiums - Ver la lista de usuarios premium.\n"
-            . "/vipremove [id] - Eliminar un usuario premium (solo para admins).";
+            . "/claim [key] - Canjear una key de premium.";
         sendMessage($chat_id, $respuesta, $message_id);
     }
 
@@ -131,7 +128,7 @@ if (isset($json["message"])) {
         }
     }
 
-    // Comando /claim
+    // Comando /claim (disponible para todos)
     if (strpos($message, "/claim") === 0) {
         $parts = explode(" ", $message);
         if (count($parts) === 2) {
@@ -162,10 +159,10 @@ if (isset($json["message"])) {
                     // Calcular la fecha de expiración
                     $expires_at = date("Y-m-d H:i:s", strtotime("+$duration $duration_type"));
 
-                    // Marcar la key como usada
-                    $sql = "UPDATE keys_table SET used = TRUE, used_by = ? WHERE key_value = ?";
+                    // Marcar la key como usada y eliminarla de la base de datos
+                    $sql = "DELETE FROM keys_table WHERE key_value = ?";
                     $stmt = $conn->prepare($sql);
-                    $stmt->bind_param("is", $id, $key_value);
+                    $stmt->bind_param("s", $key_value);
                     $stmt->execute();
 
                     // Guardar al usuario como premium
@@ -187,23 +184,27 @@ if (isset($json["message"])) {
         }
     }
 
-    // Comando /listpremiums
+    // Comando /listpremiums (solo para el usuario 1292171163)
     if ($message === "/listpremiums") {
-        // Obtener la lista de usuarios premium
-        $sql = "SELECT * FROM premiums";
-        $result = $conn->query($sql);
+        if ($id == 1292171163) {
+            // Obtener la lista de usuarios premium
+            $sql = "SELECT * FROM premiums";
+            $result = $conn->query($sql);
 
-        if ($result->num_rows > 0) {
-            $respuesta = "👑 Lista de usuarios premium:\n\n";
-            while ($row = $result->fetch_assoc()) {
-                $respuesta .= "👤 Nombre: " . $row["first_name"] . "\n"
-                    . "🆔 ID: " . $row["user_id"] . "\n"
-                    . "📅 Expira: " . $row["expires_at"] . "\n\n";
+            if ($result->num_rows > 0) {
+                $respuesta = "👑 Lista de usuarios premium:\n\n";
+                while ($row = $result->fetch_assoc()) {
+                    $respuesta .= "👤 Nombre: " . $row["first_name"] . "\n"
+                        . "🆔 ID: " . $row["user_id"] . "\n"
+                        . "📅 Expira: " . $row["expires_at"] . "\n\n";
+                }
+            } else {
+                $respuesta = "ℹ️ No hay usuarios premium en este momento.";
             }
+            sendMessage($chat_id, $respuesta, $message_id);
         } else {
-            $respuesta = "ℹ️ No hay usuarios premium en este momento.";
+            sendMessage($chat_id, "❌ Este comando es solo para administradores.", $message_id);
         }
-        sendMessage($chat_id, $respuesta, $message_id);
     }
 
     // Comando /vipremove (solo para el usuario 1292171163)
@@ -227,15 +228,6 @@ if (isset($json["message"])) {
             }
         } else {
             sendMessage($chat_id, "❌ Este comando es solo para administradores.", $message_id);
-        }
-    }
-
-    // Comandos premium (solo para usuarios premium)
-    if (isPremiumUser($id, $conn)) {
-        // Aquí puedes agregar comandos exclusivos para usuarios premium
-        if ($message === "/premiumcommand") {
-            $respuesta = "🎖️ Este es un comando exclusivo para usuarios premium.";
-            sendMessage($chat_id, $respuesta, $message_id);
         }
     }
 
