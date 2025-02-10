@@ -8,7 +8,7 @@ error_reporting(E_ALL);
 date_default_timezone_set('America/Mexico_City');
 
 // Obtener el token del bot de Telegram
-$token = getenv('TELEGRAM_BOT_TOKEN');
+$token = getenv('7020048572:AAG5bV9yhIk4DVw3ynUo-j9GHS743f9xVyA');
 if (empty($token)) {
     die("❌ Error: No se encontró el token del bot.");
 }
